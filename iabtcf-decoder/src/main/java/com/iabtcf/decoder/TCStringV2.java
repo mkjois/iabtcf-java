@@ -151,9 +151,10 @@ class TCStringV2 implements TCString {
         final int maxV = bbv.readBits16(maxVendor);
         final boolean isRangeEncoding = bbv.readBits1(maxVendor.getEnd(bbv));
         final int vendorFieldOffset = vendorField.getOffset(bbv);
-        BitSet bs = new BitSet();
+        BitSet bs;
 
         if (isRangeEncoding) {
+            bs = new BitSet();
             vendorIdsFromRange(bbv, bs, vendorField, Optional.of(maxVendor));
         } else {
             bs = bbv.readBitSet(vendorFieldOffset, maxV, 1);
@@ -170,7 +171,7 @@ class TCStringV2 implements TCString {
             Optional<FieldDefs> maxVendor) {
 
         final int numberOfVendorEntries = bbv.readBits12(numberOfVendorEntriesOffset);
-        final int maxV = maxVendor.map(maxVF -> bbv.readBits16(maxVF)).orElse(Integer.MAX_VALUE);
+        final int maxV = maxVendor.map(bbv::readBits16).orElse(Integer.MAX_VALUE);
         final int vendorIdFieldLength = FieldDefs.START_OR_ONLY_VENDOR_ID.getLength(bbv);
         final int vendorIdMask = 0xFFFFFFFF >>> (32 - vendorIdFieldLength);
         int offset = numberOfVendorEntriesOffset + FieldDefs.NUM_ENTRIES.getLength(bbv);
@@ -183,20 +184,32 @@ class TCStringV2 implements TCString {
                 final int endVendorId = content & vendorIdMask;
                 offset += 2 * vendorIdFieldLength;
 
+                if (startVendorId < 0 || endVendorId < 0) {
+                    throw new InvalidRangeFieldException(String.format(
+                            "start vendor ID (%d) and end vendor ID (%d) must be positive",
+                            startVendorId, endVendorId));
+                }
                 if (startVendorId > endVendorId) {
                     throw new InvalidRangeFieldException(String.format(
-                            "start vendor id (%d) is greater than endVendorId (%d)", startVendorId, endVendorId));
+                            "start vendor ID (%d) is greater than end vendor ID (%d)", startVendorId, endVendorId));
                 }
-
                 if (endVendorId > maxV) {
-                    throw new InvalidRangeFieldException(
-                            String.format("end vendor id (%d) is greater than max (%d)", endVendorId, maxV));
+                    throw new InvalidRangeFieldException(String.format(
+                            "end vendor ID (%d) is greater than max (%d)", endVendorId, maxV));
                 }
-
                 bs.set(startVendorId, endVendorId + 1);
             } else {
                 final int onlyVendorId = bbv.readBits16(offset);
                 offset += vendorIdFieldLength;
+
+                if (onlyVendorId < 0) {
+                    throw new InvalidRangeFieldException(String.format(
+                            "vendor ID (%d) must be positive", onlyVendorId));
+                }
+                if (onlyVendorId > maxV) {
+                    throw new InvalidRangeFieldException(String.format(
+                            "vendor ID (%d) is greater than max (%d)", onlyVendorId, maxV));
+                }
                 bs.set(onlyVendorId);
             }
         }
