@@ -67,6 +67,7 @@ import com.iabtcf.utils.BitReader;
 import com.iabtcf.utils.BitSetIntIterable;
 import com.iabtcf.utils.FieldDefs;
 import com.iabtcf.utils.IntIterable;
+import com.iabtcf.utils.UnsafeLeanBitSet;
 import com.iabtcf.v2.PublisherRestriction;
 import com.iabtcf.v2.RestrictionType;
 import com.iabtcf.v2.SegmentType;
@@ -154,8 +155,9 @@ class TCStringV2 implements TCString {
         BitSet bs;
 
         if (isRangeEncoding) {
-            bs = new BitSet();
-            vendorIdsFromRange(bbv, bs, vendorField, Optional.of(maxVendor));
+            final UnsafeLeanBitSet unsafeBitSet = new UnsafeLeanBitSet(0);
+            vendorIdsFromRange(bbv, unsafeBitSet, vendorField, Optional.of(maxVendor));
+            bs = unsafeBitSet.toBitSet();
         } else {
             bs = bbv.readBitSet(vendorFieldOffset, maxV, 1);
         }
@@ -167,8 +169,8 @@ class TCStringV2 implements TCString {
      *
      * @throws InvalidRangeFieldException
      */
-    static int vendorIdsFromRange(BitReader bbv, BitSet bs, int numberOfVendorEntriesOffset,
-            Optional<FieldDefs> maxVendor) {
+    static int vendorIdsFromRange(
+            BitReader bbv, UnsafeLeanBitSet bs, int numberOfVendorEntriesOffset, Optional<FieldDefs> maxVendor) {
 
         final int numberOfVendorEntries = bbv.readBits12(numberOfVendorEntriesOffset);
         final int maxV = maxVendor.map(bbv::readBits16).orElse(Integer.MAX_VALUE);
@@ -197,7 +199,10 @@ class TCStringV2 implements TCString {
                     throw new InvalidRangeFieldException(String.format(
                             "end vendor ID (%d) is greater than max (%d)", endVendorId, maxV));
                 }
-                bs.set(startVendorId, endVendorId + 1);
+
+                bs.ensureCapacity(1 + endVendorId);
+                bs.unsafeSet(startVendorId, endVendorId + 1, true);
+
             } else {
                 final int onlyVendorId = bbv.readBits16(offset);
                 offset += vendorIdFieldLength;
@@ -210,7 +215,9 @@ class TCStringV2 implements TCString {
                     throw new InvalidRangeFieldException(String.format(
                             "vendor ID (%d) is greater than max (%d)", onlyVendorId, maxV));
                 }
-                bs.set(onlyVendorId);
+
+                bs.ensureCapacity(1 + onlyVendorId);
+                bs.unsafeSet(onlyVendorId, true);
             }
         }
 
@@ -220,7 +227,8 @@ class TCStringV2 implements TCString {
     /**
      * @throws InvalidRangeFieldException
      */
-    static void vendorIdsFromRange(BitReader bbv, BitSet bs, FieldDefs vendorField, Optional<FieldDefs> maxVendor) {
+    static void vendorIdsFromRange(
+            BitReader bbv, UnsafeLeanBitSet bs, FieldDefs vendorField, Optional<FieldDefs> maxVendor) {
         vendorIdsFromRange(bbv, bs, vendorField.getOffset(bbv), maxVendor);
     }
 
@@ -240,12 +248,12 @@ class TCStringV2 implements TCString {
             final int restrictionTypeId = content & 0b11;
             currentPointer += purposeIdFieldLength + 2;
 
-            final BitSet bs = new BitSet();
+            final UnsafeLeanBitSet bs = new UnsafeLeanBitSet(0);
             currentPointer = vendorIdsFromRange(bbv, bs, currentPointer, Optional.empty());
             publisherRestrictions.add(
                     new PublisherRestriction(
                             purposeId, RestrictionType.from(restrictionTypeId),
-                            BitSetIntIterable.from(bs)));
+                            BitSetIntIterable.from(bs.toBitSet())));
         }
         return currentPointer;
     }

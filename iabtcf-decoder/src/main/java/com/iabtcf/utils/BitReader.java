@@ -391,7 +391,7 @@ public class BitReader {
      * @throws ByteParseException
      */
     public BitSet readBitSet(int offset, int length, int resultShift) {
-        final BitSet bs = new BitSet(length);
+        final UnsafeLeanBitSet bs = new UnsafeLeanBitSet(resultShift + length);
         int i = 0;
         while (i < length) {
             final int remaining = length - i;
@@ -414,13 +414,13 @@ public class BitReader {
                 i += remaining;
             }
         }
-        return bs;
+        return bs.toBitSet();
     }
 
-    private void fillBitSetWithContent(BitSet bs, long content, int size, int offset) {
+    private void fillBitSetWithContent(UnsafeLeanBitSet bs, long content, int size, int offset) {
         for (int j = 0; j < size; j++) {
             if (((content >>> (size - 1 - j)) & 1) == 1) {
-                bs.set(offset + j);
+                bs.unsafeSet(offset + j, true);
             }
         }
     }
