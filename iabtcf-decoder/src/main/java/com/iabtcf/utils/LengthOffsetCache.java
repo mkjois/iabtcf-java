@@ -58,17 +58,17 @@ class LengthOffsetCache {
      * @param <K> Enum type
      */
     static class LeanEnumArrayIntMap<K extends Enum<K>> {
-        private final long[] existence;
+        private final UnsafeLeanBitSet existence;
         private final int[] values;
 
         LeanEnumArrayIntMap(final K example) {
             final K[] constants = example.getDeclaringClass().getEnumConstants();
-            this.existence = new long[(constants.length >>> 6) + ((constants.length & 0x3f) == 0 ? 0 : 1)];
+            this.existence = new UnsafeLeanBitSet(constants.length);
             this.values = new int[constants.length];
         }
 
         boolean contains(final K key) {
-            return getBit(key.ordinal());
+            return existence.unsafeGet(key.ordinal());
         }
 
         int get(final K key) {
@@ -77,25 +77,11 @@ class LengthOffsetCache {
 
         void put(final K key, final int value) {
             values[key.ordinal()] = value;
-            setBit(key.ordinal(), true);
+            existence.unsafeSet(key.ordinal(), true);
         }
 
         void remove(final K key) {
-            setBit(key.ordinal(), false);
-        }
-
-        private boolean getBit(final int index) {
-            final int wordIndex = index >>> 6;
-            final int bitIndex = index & 0x3f;
-            return ((existence[wordIndex] >>> bitIndex) & 1) == 1;
-        }
-
-        private void setBit(final int index, final boolean flag) {
-            final int wordIndex = index >>> 6;
-            final int bitIndex = index & 0x3f;
-            existence[wordIndex] = flag
-                    ? existence[wordIndex] | (1L << bitIndex)
-                    : existence[wordIndex] & (~(1L << bitIndex));
+            existence.unsafeSet(key.ordinal(), false);
         }
     }
 }

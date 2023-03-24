@@ -43,6 +43,7 @@ import com.iabtcf.utils.BitReader;
 import com.iabtcf.utils.BitSetIntIterable;
 import com.iabtcf.utils.FieldDefs;
 import com.iabtcf.utils.IntIterable;
+import com.iabtcf.utils.UnsafeLeanBitSet;
 import com.iabtcf.v2.PublisherRestriction;
 
 class TCStringV1 implements TCString {
@@ -192,28 +193,25 @@ class TCStringV1 implements TCString {
      * @throws InvalidRangeFieldException
      */
     private IntIterable fillVendorsV1(BitReader bbv, FieldDefs maxVendor, FieldDefs vendorField) {
-        BitSet bs = new BitSet();
 
-        int maxV = bbv.readBits16(maxVendor);
-        boolean isRangeEncoding = bbv.readBits1(maxVendor.getEnd(bbv));
+        final int maxV = bbv.readBits16(maxVendor);
+        final boolean isRangeEncoding = bbv.readBits1(maxVendor.getEnd(bbv));
+        final int vendorFieldOffset = vendorField.getOffset(bbv);
+        BitSet bs;
 
         if (isRangeEncoding) {
-            boolean defaultConsent = bbv.readBits1(FieldDefs.V1_VENDOR_DEFAULT_CONSENT);
-            TCStringV2.vendorIdsFromRange(bbv, bs, FieldDefs.V1_VENDOR_NUM_ENTRIES.getOffset(bbv),
+            final UnsafeLeanBitSet unsafeBitSet = new UnsafeLeanBitSet(0);
+            final boolean defaultConsent = bbv.readBits1(FieldDefs.V1_VENDOR_DEFAULT_CONSENT);
+            TCStringV2.vendorIdsFromRange(bbv, unsafeBitSet, FieldDefs.V1_VENDOR_NUM_ENTRIES.getOffset(bbv),
                     Optional.of(maxVendor));
 
+            bs = unsafeBitSet.toBitSet();
             if (defaultConsent) {
                 bs.flip(1, maxV + 1);
             }
         } else {
-            for (int i = 0; i < maxV; i++) {
-                boolean hasVendorConsent = bbv.readBits1(vendorField.getOffset(bbv) + i);
-                if (hasVendorConsent) {
-                    bs.set(i + 1);
-                }
-            }
+            bs = bbv.readBitSet(vendorFieldOffset, maxV, 1);
         }
-
         return BitSetIntIterable.from(bs);
     }
 
