@@ -125,7 +125,9 @@ public class TCStringV2EncoderTest {
 
         assertEquals(1, tcf.split("\\.").length);
         assertEquals(2, decoded.getVersion());
-        assertEquals(created.truncatedTo(ChronoUnit.DAYS), decoded.getCreated());
+        /* We are using the value of updated field in the builder to populate the created in order to
+           keep the values of created and update same as per the new TCF specifications. */
+        assertEquals(updated.truncatedTo(ChronoUnit.DAYS), decoded.getCreated());
         assertEquals(updated.truncatedTo(ChronoUnit.DAYS), decoded.getLastUpdated());
         assertEquals(1, decoded.getCmpId());
         assertEquals(12, decoded.getCmpVersion());

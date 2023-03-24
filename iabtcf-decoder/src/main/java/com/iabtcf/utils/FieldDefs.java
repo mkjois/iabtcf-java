@@ -20,7 +20,7 @@ package com.iabtcf.utils;
  * #L%
  */
 
-import java.util.function.Function;
+import java.util.function.ToIntFunction;
 
 /**
  * This enum defines all V1 and V2 consent string fields with their offsets and lengths. Since some
@@ -85,8 +85,8 @@ public enum FieldDefs {
     PPTC_NUM_CUSTOM_PURPOSES(6),
     PPTC_CUSTOM_PURPOSES_CONSENT(new LengthSupplier() {
         @Override
-        public Integer apply(BitReader t) {
-            return Integer.valueOf(t.readBits6(PPTC_NUM_CUSTOM_PURPOSES.getOffset(t)));
+        public int applyAsInt(BitReader t) {
+            return Byte.toUnsignedInt(t.readBits6(PPTC_NUM_CUSTOM_PURPOSES.getOffset(t)));
         }
 
         @Override
@@ -96,7 +96,7 @@ public enum FieldDefs {
     }),
     PPTC_CUSTOM_PURPOSES_LI_TRANSPARENCY(new LengthSupplier() {
         @Override
-        public Integer apply(BitReader t) {
+        public int applyAsInt(BitReader t) {
             // same length as PPTC_CUSTOM_PURPOSES_CONSENT
             return PPTC_CUSTOM_PURPOSES_CONSENT.getLength(t);
         }
@@ -143,7 +143,7 @@ public enum FieldDefs {
     V1_PPC_CUSTOM_PURPOSES_BITFIELD(new LengthSupplier() {
 
         @Override
-        public Integer apply(BitReader t) {
+        public int applyAsInt(BitReader t) {
             return Byte.toUnsignedInt(t.readBits6(FieldDefs.V1_PPC_NUMBER_CUSTOM_PURPOSES.getOffset(t)));
         }
 
@@ -201,9 +201,8 @@ public enum FieldDefs {
      * Returns the length of a non-dynamic field.
      */
     public int getLength() {
-        assert (length.isDynamic() == false);
-
-        return length.apply(null);
+        assert (!length.isDynamic());
+        return length.applyAsInt(null);
     }
 
     /**
@@ -236,12 +235,14 @@ public enum FieldDefs {
      * Dynamic fields are not cached at the enum level and are instead resolved through the BitReader.
      */
     private static abstract class MemoizingFunction
-            implements LengthSupplier, OffsetSupplier, Function<BitReader, Integer> {
+            implements LengthSupplier, OffsetSupplier, ToIntFunction<BitReader> {
+
         private volatile boolean dynamicInitialized = false;
         private volatile boolean isDynamic = false;
-        private volatile Integer value;
+        private volatile boolean valueInitialized = false;
+        private volatile int value;
 
-        public abstract Integer doCompute(BitReader t);
+        public abstract int doCompute(BitReader t);
 
         /**
          * implementation must be thread-safe
@@ -250,13 +251,13 @@ public enum FieldDefs {
         public abstract boolean isDynamic();
 
         @Override
-        public Integer apply(BitReader t) {
+        public int applyAsInt(BitReader t) {
             if (isDynamicPvt()) {
                 return doCompute(t);
-            } else if (value == null) {
+            } else if (!valueInitialized) {
                 value = doCompute(t);
+                valueInitialized = true;
             }
-
             return value;
         }
 
@@ -269,7 +270,7 @@ public enum FieldDefs {
         }
     }
 
-    private interface OffsetSupplier extends Function<BitReader, Integer> {
+    private interface OffsetSupplier extends ToIntFunction<BitReader> {
 
         /**
          * This is used when we don't want a field to support offsets.
@@ -277,7 +278,7 @@ public enum FieldDefs {
         OffsetSupplier NOT_SUPPORTED = new OffsetSupplier() {
 
             @Override
-            public Integer apply(BitReader t) {
+            public int applyAsInt(BitReader t) {
                 throw new UnsupportedOperationException();
             }
 
@@ -294,7 +295,7 @@ public enum FieldDefs {
             return new OffsetSupplier() {
 
                 @Override
-                public Integer apply(BitReader t) {
+                public int applyAsInt(BitReader t) {
                     return offset;
                 }
 
@@ -317,7 +318,7 @@ public enum FieldDefs {
                 }
 
                 @Override
-                public Integer doCompute(BitReader t) {
+                public int doCompute(BitReader t) {
                     return thisEnum.getLength(t) + thisEnum.getOffset(t);
                 }
             };
@@ -336,7 +337,7 @@ public enum FieldDefs {
                 }
 
                 @Override
-                public Integer doCompute(BitReader t) {
+                public int doCompute(BitReader t) {
                     FieldDefs prevEnum = FieldDefs.values()[thisEnum.ordinal() - 1];
                     return prevEnum.getLength(t) + prevEnum.getOffset(t);
                 }
@@ -346,7 +347,7 @@ public enum FieldDefs {
         boolean isDynamic();
     }
 
-    private interface LengthSupplier extends Function<BitReader, Integer> {
+    private interface LengthSupplier extends ToIntFunction<BitReader> {
 
         /**
          * A constant length for static fields.
@@ -355,7 +356,7 @@ public enum FieldDefs {
             return new LengthSupplier() {
 
                 @Override
-                public Integer apply(BitReader t) {
+                public int applyAsInt(BitReader t) {
                     return length;
                 }
 
@@ -389,7 +390,7 @@ public enum FieldDefs {
         public static LengthSupplier lengthSupplier(FieldDefs numPubRestrictionsOffset) {
             return new LengthSupplier() {
                 @Override
-                public Integer apply(BitReader t) {
+                public int applyAsInt(BitReader t) {
                     return calculateBitRangelength(t, numPubRestrictionsOffset.getOffset(t));
                 }
 
@@ -435,7 +436,7 @@ public enum FieldDefs {
         public static LengthSupplier lengthSupplier(FieldDefs isRangeEncoding, FieldDefs maxVendorId) {
             return new LengthSupplier() {
                 @Override
-                public Integer apply(BitReader t) {
+                public int applyAsInt(BitReader t) {
                     return calculateBitRangeLength(t, isRangeEncoding.getOffset(t), maxVendorId.getOffset(t));
                 }
 
@@ -449,7 +450,7 @@ public enum FieldDefs {
         public static LengthSupplier lengthSupplierV1() {
             return new LengthSupplier() {
                 @Override
-                public Integer apply(BitReader t) {
+                public int applyAsInt(BitReader t) {
                     int isRangeEncodingOffset = FieldDefs.V1_VENDOR_IS_RANGE_ENCODING.getOffset(t);
                     if (!t.readBits1(isRangeEncodingOffset)) {
                         return calculateBitLength(t, FieldDefs.V1_VENDOR_MAX_VENDOR_ID.getOffset(t));

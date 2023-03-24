@@ -20,38 +20,82 @@ package com.iabtcf.utils;
  * #L%
  */
 
-import java.util.EnumMap;
-import java.util.function.Function;
+import java.util.function.ToIntFunction;
 
 class LengthOffsetCache {
     private final BitReader bbv;
-    private final EnumMap<FieldDefs, Integer> lengthCache = new EnumMap<>(FieldDefs.class);
-    private final EnumMap<FieldDefs, Integer> offsetCache = new EnumMap<>(FieldDefs.class);
+    private final LeanEnumArrayIntMap<FieldDefs> lengthCache = new LeanEnumArrayIntMap<>(FieldDefs.CORE_VERSION);
+    private final LeanEnumArrayIntMap<FieldDefs> offsetCache = new LeanEnumArrayIntMap<>(FieldDefs.CORE_VERSION);
 
     public LengthOffsetCache(BitReader bbv) {
         this.bbv = bbv;
     }
 
-    public Integer getLength(FieldDefs field, Function<BitReader, Integer> f) {
+    public int getLength(FieldDefs field, ToIntFunction<BitReader> f) {
         return memoize(field, lengthCache, f);
     }
 
-    public Integer getOffset(FieldDefs field, Function<BitReader, Integer> f) {
+    public int getOffset(FieldDefs field, ToIntFunction<BitReader> f) {
         return memoize(field, offsetCache, f);
     }
 
-    private Integer memoize(FieldDefs field, EnumMap<FieldDefs, Integer> cache,
-            Function<BitReader, Integer> f) {
+    private int memoize(FieldDefs field, LeanEnumArrayIntMap<FieldDefs> cache, ToIntFunction<BitReader> f) {
         if (!field.isDynamic()) {
-            return f.apply(bbv);
+            return f.applyAsInt(bbv);
         }
-
-        Integer rv = cache.get(field);
-        if (rv == null) {
-            rv = f.apply(bbv);
-            cache.put(field, rv);
+        if (cache.contains(field)) {
+            return cache.get(field);
         }
-
+        int rv = f.applyAsInt(bbv);
+        cache.put(field, rv);
         return rv;
+    }
+
+    /**
+     * A leaner enum to primitive integer map with minimal functionality and invariant checks.
+     * Users MUST always check for existence with .contains() before trusting the value returned by .get(),
+     * otherwise the value returned by .get() will be GARBAGE.
+     * @param <K> Enum type
+     */
+    static class LeanEnumArrayIntMap<K extends Enum<K>> {
+        private final long[] existence;
+        private final int[] values;
+
+        LeanEnumArrayIntMap(final K example) {
+            final K[] constants = example.getDeclaringClass().getEnumConstants();
+            this.existence = new long[(constants.length >>> 6) + ((constants.length & 0x3f) == 0 ? 0 : 1)];
+            this.values = new int[constants.length];
+        }
+
+        boolean contains(final K key) {
+            return getBit(key.ordinal());
+        }
+
+        int get(final K key) {
+            return values[key.ordinal()];
+        }
+
+        void put(final K key, final int value) {
+            values[key.ordinal()] = value;
+            setBit(key.ordinal(), true);
+        }
+
+        void remove(final K key) {
+            setBit(key.ordinal(), false);
+        }
+
+        private boolean getBit(final int index) {
+            final int wordIndex = index >>> 6;
+            final int bitIndex = index & 0x3f;
+            return ((existence[wordIndex] >>> bitIndex) & 1) == 1;
+        }
+
+        private void setBit(final int index, final boolean flag) {
+            final int wordIndex = index >>> 6;
+            final int bitIndex = index & 0x3f;
+            existence[wordIndex] = flag
+                    ? existence[wordIndex] | (1L << bitIndex)
+                    : existence[wordIndex] & (~(1L << bitIndex));
+        }
     }
 }
